@@ -85,68 +85,79 @@ def main(args):
 
     tokenizer = vocabulary.SMILESTokenizer()
 
-    if args.generation_method == "generation-normal":
-        # Function 1: Generate one or more molecules using decoders
-        generated_smiles = multi_gen_test.get_sim_smiles_decoding(
-            args.src_smiles,
-            SRC,
-            TRG,
-            model,
-            device,
-            max_length,
-            args.beam_width,
-            1.2,  # Temperature for sampling (not relevant for this decoder)
-            tokenizer,
-            decoder_type=args.decoder_type,
-            use_masking=True,
-            prefix_length=args.prefix_length
-        )
-        data = [(smi, prob) for smi, prob in generated_smiles]
-
-    elif args.generation_method == "generation-variant":
-        # Function 2: Generate multiple SMILES using variants
-        generation_w_var = multi_gen_test.generation_with_variants(
-            args.src_smiles,
-            SRC,
-            TRG,
-            model,
-            device,
-            max_length,
-            args.beam_width,
-            1.2,
-            tokenizer,
-            variant_count=10,
-            decoder_type=args.decoder_type,
-            use_masking=True,
-            prefix_length=args.prefix_length
-        )
-        data = [(smi, prob) for smi, prob in generation_w_var]
-
-    elif args.generation_method == "generation-recursive":
-        # Function 3: Generate more SMILES by re-inputting generated SMILES back to the model
-        generation_w_recur = multi_gen_test.recursive_generation_with_beam(
-            args.src_smiles,
-            SRC,
-            TRG,
-            model,
-            device,
-            max_length,
-            args.beam_width,
-            2,  # Number of recursive steps
-            tokenizer,  # User-provided tokenizer
-            temperature=1.2,
-            decoder_type=args.decoder_type,
-            use_masking=True,
-            prefix_length=args.prefix_length
-        )
-        data = [(smi, prob) for smi, prob in generation_w_recur]
-
+    # Read input SMILES (single or from file)
+    input_smiles_list = []
+    if args.src_smiles.endswith('.smi'):
+        # Read SMILES from file
+        with open(args.src_smiles, 'r') as f:
+            input_smiles_list = [line.strip() for line in f if line.strip()]
     else:
-        print("Invalid generation method. Please choose from: 'generation-normal', 'generation-variant', 'generation-recursive'.")
-        return
+        # Single SMILES input
+        input_smiles_list = [args.src_smiles]
+
+    all_data = []  # To collect all generated SMILES and probabilities
+
+    for input_smiles in input_smiles_list:
+        if args.generation_method == "generation-normal":
+            # Generate SMILES using normal method
+            generated_smiles = multi_gen_test.get_sim_smiles_decoding(
+                input_smiles,
+                SRC,
+                TRG,
+                model,
+                device,
+                max_length,
+                args.beam_width,
+                1.2,  # Temperature for sampling (not relevant for this decoder)
+                tokenizer,
+                decoder_type=args.decoder_type,
+                use_masking=True,
+                prefix_length=args.prefix_length
+            )
+        elif args.generation_method == "generation-variant":
+            # Generate SMILES using variants method
+            generated_smiles = multi_gen_test.generation_with_variants(
+                input_smiles,
+                SRC,
+                TRG,
+                model,
+                device,
+                max_length,
+                args.beam_width,
+                1.2,
+                tokenizer,
+                variant_count=10,
+                decoder_type=args.decoder_type,
+                use_masking=True,
+                prefix_length=args.prefix_length
+            )
+        elif args.generation_method == "generation-recursive":
+            # Generate SMILES using recursive method
+            generated_smiles = multi_gen_test.recursive_generation_with_beam(
+                input_smiles,
+                SRC,
+                TRG,
+                model,
+                device,
+                max_length,
+                args.beam_width,
+                2,  # Number of recursive steps
+                tokenizer,
+                temperature=1.2,
+                decoder_type=args.decoder_type,
+                use_masking=True,
+                prefix_length=args.prefix_length
+            )
+        else:
+            print("Invalid generation method. Skipping SMILES.")
+            continue
+
+        # Add input SMILES to each generated SMILES
+        for smi, prob in generated_smiles:
+            all_data.append((input_smiles, smi, prob))
 
     # Create a DataFrame and sort by probability
-    df = pd.DataFrame(data, columns=["Generated_SMILES", "Probability"])
+    df = pd.DataFrame(all_data, columns=["Input_SMILES", "Generated_SMILES", "Probability"])
     df = df.sort_values(by="Probability", ascending=False)
 
     # Save to CSV
@@ -161,7 +172,7 @@ if __name__ == "__main__":
     parser.add_argument("--prefix_length", type=int, required=True, help="Prefix length.")
     parser.add_argument("--beam_width", type=int, required=True, help="Beam width for SMILES generation.")
     parser.add_argument("--generation_method", type=str, required=True, choices=["generation-normal", "generation-variant", "generation-recursive"], help="Generation method to use.")
-    parser.add_argument("--src_smiles", type=str, required=True, help="Source SMILES string to generate from.")
+    parser.add_argument("--src_smiles", type=str, required=True, help="Source SMILES string or path to a .smi file containing SMILES.")
     parser.add_argument("--output_path", type=str, required=True, help="Path to save the generated SMILES CSV file.")
 
     args = parser.parse_args()
