@@ -4,6 +4,6 @@
 
 Clone the repository and install the package:
 ```bash
-git clone https://github.com/yourusername/ANNalog_api.git
+git clone [https://github.com/DVNecromancer/ANNalog_api](https://github.com/DVNecromancer/ANNalog/edit/main/annalog_package).git
 cd ANNalog_api
-pip install -e .
+pip install .
