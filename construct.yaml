@@ -1,5 +1,5 @@
 name: final_seq
-version: 1.0.0  # Specify your package version
+version: 1.0.0
 channels:
   - pytorch
   - conda-forge
