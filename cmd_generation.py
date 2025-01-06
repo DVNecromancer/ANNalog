@@ -1,7 +1,7 @@
 import argparse
 import torch
 from torchtext.legacy.data import Field
-from models import vocabulary, seq2seq_attention, multi_gen_real_final
+from model import vocabulary, seq2seq_attention, multi_gen_real_final
 import pickle
 import pandas as pd
 
