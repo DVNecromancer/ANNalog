@@ -1,34 +1,9 @@
-# Standard Libraries
-import random
-import math
-import time
-from collections import Counter, defaultdict
 import argparse
-
-# Third-Party Libraries
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader
-from torch.nn.utils.rnn import pad_sequence
-from torchtext.legacy.data import Field, BucketIterator
-from torchtext.vocab import vocab
-
-# RDKit for Molecular Handling
-from rdkit import Chem
-from rdkit.Chem import AllChem, Draw, DataStructs
-
-# Model-Specific Imports
-from model import vocabulary, seq2seq_attention, multi_gen_test
-from model.seq2seq_dataset import SMILESDataset
-
-# Utilities
+from torchtext.legacy.data import Field
+from models import vocabulary, seq2seq_attention, multi_gen_real_final
 import pickle
-import tqdm
+import pandas as pd
 
 def main(args):
     """
@@ -83,8 +58,6 @@ def main(args):
     model.load_state_dict(torch.load(args.model_checkpoint_path))
     model.eval()
 
-    tokenizer = vocabulary.SMILESTokenizer()
-
     # Read input SMILES (single or from file)
     input_smiles_list = []
     if args.src_smiles.endswith('.smi'):
@@ -98,9 +71,9 @@ def main(args):
     all_data = []  # To collect all generated SMILES and probabilities
 
     for input_smiles in input_smiles_list:
-        if args.generation_method == "generation-normal":
+        if args.input_selection == "normal":
             # Generate SMILES using normal method
-            generated_smiles = multi_gen_test.get_sim_smiles_decoding(
+            generated_smiles = multi_gen_real_final.get_sim_smiles_decoding(
                 input_smiles,
                 SRC,
                 TRG,
@@ -109,14 +82,14 @@ def main(args):
                 max_length,
                 args.beam_width,
                 1.2,  # Temperature for sampling (not relevant for this decoder)
-                tokenizer,
-                decoder_type=args.decoder_type,
+                generation_method=args.generation_method,
                 use_masking=True,
-                prefix_length=args.prefix_length
+                prefix_length=args.prefix_length,
+                invalid_check=args.invalid_check
             )
-        elif args.generation_method == "generation-variant":
+        elif args.input_selection == "variant":
             # Generate SMILES using variants method
-            generated_smiles = multi_gen_test.generation_with_variants(
+            generated_smiles = multi_gen_real_final.generation_with_variants(
                 input_smiles,
                 SRC,
                 TRG,
@@ -125,15 +98,15 @@ def main(args):
                 max_length,
                 args.beam_width,
                 1.2,
-                tokenizer,
                 variant_count=10,
-                decoder_type=args.decoder_type,
+                generation_method=args.generation_method,
                 use_masking=True,
-                prefix_length=args.prefix_length
+                prefix_length=args.prefix_length,
+                invalid_check=args.invalid_check
             )
-        elif args.generation_method == "generation-recursive":
+        elif args.input_selection == "recursive":
             # Generate SMILES using recursive method
-            generated_smiles = multi_gen_test.recursive_generation_with_beam(
+            generated_smiles = multi_gen_real_final.recursive_generation_with_beam(
                 input_smiles,
                 SRC,
                 TRG,
@@ -142,11 +115,11 @@ def main(args):
                 max_length,
                 args.beam_width,
                 2,  # Number of recursive steps
-                tokenizer,
                 temperature=1.2,
-                decoder_type=args.decoder_type,
+                generation_method=args.generation_method,
                 use_masking=True,
-                prefix_length=args.prefix_length
+                prefix_length=args.prefix_length,
+                invalid_check=args.invalid_check
             )
         else:
             print("Invalid generation method. Skipping SMILES.")
@@ -156,9 +129,11 @@ def main(args):
         for smi, prob in generated_smiles:
             all_data.append((input_smiles, smi, prob))
 
-    # Create a DataFrame and sort by probability
+    # Create a DataFrame
     df = pd.DataFrame(all_data, columns=["Input_SMILES", "Generated_SMILES", "Probability"])
-    df = df.sort_values(by="Probability", ascending=False)
+
+    # Sort probabilities within each input SMILES cluster
+    df = df.sort_values(by=["Input_SMILES", "Probability"], ascending=[True, False])
 
     # Save to CSV
     df.to_csv(args.output_path, index=False)
@@ -168,10 +143,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SMILES Generation Script")
     parser.add_argument("--vocab_path", type=str, required=True, help="Path to the vocabulary file.")
     parser.add_argument("--model_checkpoint_path", type=str, required=True, help="Path to the model checkpoint file.")
-    parser.add_argument("--decoder_type", type=int, required=True, help="Decoder type (e.g., 0 for standard beam search).")
+    parser.add_argument("--generation_method", type=str, required=True, help="Generation method (e.g., 'BS' for standard beam search, 'BFBS' for best-first beam search, 'SD' for sampling decoder).")
     parser.add_argument("--prefix_length", type=int, required=True, help="Prefix length.")
+    parser.add_argument("--invalid_check", type=bool, required=True, help="do invalid check or not.")
     parser.add_argument("--beam_width", type=int, required=True, help="Beam width for SMILES generation.")
-    parser.add_argument("--generation_method", type=str, required=True, choices=["generation-normal", "generation-variant", "generation-recursive"], help="Generation method to use.")
+    parser.add_argument("--input_selection", type=str, required=True, choices=["normal", "variant", "recursive"], help="How to modify input SMILES.")
     parser.add_argument("--src_smiles", type=str, required=True, help="Source SMILES string or path to a .smi file containing SMILES.")
     parser.add_argument("--output_path", type=str, required=True, help="Path to save the generated SMILES CSV file.")
 
