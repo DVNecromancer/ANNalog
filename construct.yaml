@@ -18,3 +18,5 @@ specs:
   - pip
   - pip:
       - git+https://github.com/baoilleach/partialsmiles.git
+license_file: LICENSE.txt
+installer_type: sh
