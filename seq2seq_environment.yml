@@ -1,4 +1,4 @@
-name: final_seq
+name: annalog
 channels:
   - pytorch
   - conda-forge
