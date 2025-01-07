@@ -1,4 +1,4 @@
-name: final_seq
+name: annalog
 version: 1.0.0
 channels:
   - pytorch
@@ -15,3 +15,6 @@ specs:
   - torchtext=0.10.1=py39
   - rdkit=2021.09.4=py39hccf6a74_0
   - scikit-learn=1.2.2=py39h6a678d5_0
+  - pip
+  - pip:
+      - git+https://github.com/baoilleach/partialsmiles.git
