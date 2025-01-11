@@ -1,0 +1,1 @@
+partialsmiles@ git+https://github.com/baoilleach/partialsmiles.git
