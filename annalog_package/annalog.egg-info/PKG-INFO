@@ -1,0 +1,14 @@
+Metadata-Version: 2.1
+Name: annalog
+Version: 0.3
+Summary: ANNalog -- a seq2seq model which could generate similar molecules
+Home-page: https://github.com/DVNecromancer/ANNalog/tree/main
+Author: Wei Dai
+Author-email: bty415@qmul.ac.uk
+License: MIT
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+
+UNKNOWN
+

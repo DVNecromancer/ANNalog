@@ -1,0 +1,15 @@
+README.md
+setup.py
+annalog/SMILES_generator.py
+annalog/__init__.py
+annalog/model_handler.py
+annalog.egg-info/PKG-INFO
+annalog.egg-info/SOURCES.txt
+annalog.egg-info/dependency_links.txt
+annalog.egg-info/requires.txt
+annalog.egg-info/top_level.txt
+annalog/model_files/__init__.py
+annalog/model_files/multi_gen_final.py
+annalog/model_files/seq2seq_attention.py
+annalog/model_files/seq2seq_dataset.py
+annalog/model_files/vocabulary.py
