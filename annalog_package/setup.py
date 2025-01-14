@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="annalog",
-    version="0.3",
+    version="0.3.5",
     packages=find_packages(),  # Automatically find packages
     install_requires=[
         "partialsmiles @ git+https://github.com/baoilleach/partialsmiles.git"
