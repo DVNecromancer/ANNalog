@@ -50,7 +50,7 @@ class SMILESGenerator:
                 raise ValueError(
                     f"Provided prefix '{prefix}' does not match the beginning of the input SMILES. "
                     f"Please re-run the code with a correct prefix."
-                                )
+                )
 
         elif isinstance(prefix, int):
             if prefix == 0:  # No fixed prefix
@@ -85,3 +85,16 @@ class SMILESGenerator:
             prefix_length=token_prefix_length,  # Use tokenized prefix length
             filter_invalid=filter_invalid
         )
+
+    def generate_variants(self, input_smiles, num_variants):
+        """
+        Generate variants of the input SMILES.
+
+        Args:
+            input_smiles (str): Input SMILES string.
+            num_variants (int): Number of variants to generate.
+
+        Returns:
+            list: Generated SMILES variants.
+        """
+        return multi_gen_final.generate_lots_of_smiles(input_smiles, num_variants)
