@@ -18,7 +18,7 @@ class SMILESGenerator:
         self.SRC, self.TRG, self.model, self.device, self.use_masking = model_handler.get_model_and_fields()
         self.max_length = model_handler.max_length
 
-    def generate_smiles(self, input_smiles, beam_width=100, generation_method='BS', temp=1.2, prefix=0, filter_invalid=False):
+    def generate_smiles(self, input_smiles, generation_number=100, generation_method='beam', temperature=1.2, prefix=0, filter_invalid=False):
         """
         Generate SMILES using the model.
 
@@ -78,8 +78,8 @@ class SMILESGenerator:
             model=self.model,
             device=self.device,
             max_len=self.max_length,
-            beam_width=beam_width,
-            temperature=temp,
+            beam_width=generation_number,
+            temperature=temperature,
             generation_method=generation_method,
             use_masking=self.use_masking,
             prefix_length=token_prefix_length,  # Use tokenized prefix length
