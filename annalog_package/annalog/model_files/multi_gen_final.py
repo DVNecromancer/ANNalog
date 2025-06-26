@@ -45,9 +45,9 @@ def get_sim_smiles_decoding(
     max_len,
     beam_width,
     temperature,
-    generation_method='classic-beam',  # Changed from decoder_type to generation_method
-    use_masking=True,  # Control masking
-    prefix_length=0,  # Specify the starting position for modifications
+    generation_method='classic-beam',
+    use_masking=True, 
+    prefix_length=0, 
     filter_invalid=False
 ):
     """
@@ -62,7 +62,7 @@ def get_sim_smiles_decoding(
         max_len (int): Maximum length of the output sequence.
         beam_width (int): Beam width for beam search.
         temperature (float): Temperature for sampling diversity.
-        generation_method (str): Decoding method ('BS' for Beam Search, 'BFBS' for Best-First Beam Search, 'SD' for Sampling Decoder).
+        generation_method (str): Decoding method ('C-beam' for Beam Search, 'BF-beam' for Best-First Beam Search, 'sample' for Sampling Decoder).
         use_masking (bool): Whether to apply subsequent masking during decoding.
         prefix_length (int): Number of tokens from the source to use as a prefix after <sos>.
 
@@ -90,7 +90,7 @@ def get_sim_smiles_decoding(
                 device=device, 
                 use_masking=use_masking, 
                 prefix_length=prefix_length, 
-                filter_invalid=filter_invalid  # Enable invalid sequence checking
+                filter_invalid=filter_invalid
             )
         elif generation_method == 'BF-beam':
             # Best-first beam search decoding with prefix
@@ -104,7 +104,7 @@ def get_sim_smiles_decoding(
                 device=device, 
                 queue_limit=100000, 
                 use_masking=use_masking, 
-                prefix_length=prefix_length,  # Pass the prefix length
+                prefix_length=prefix_length,
                 filter_invalid=filter_invalid
             )
         elif generation_method == 'sample':
@@ -116,15 +116,15 @@ def get_sim_smiles_decoding(
                 trg_field=trg_field, 
                 max_len=max_len, 
                 temperature=temperature, 
-                num_sequences=beam_width,  # Beam width determines the number of sequences
+                num_sequences=beam_width,
                 device=device, 
                 use_masking=use_masking, 
                 seed=42,  # Fixed seed for reproducibility
-                prefix_length=prefix_length,  # Pass the prefix length
+                prefix_length=prefix_length,
                 filter_invalid=filter_invalid
             )
         else:
-            raise ValueError("Invalid generation_method. Use 'classic-beam' for Beam Search, 'BF-beam' for Best-First Beam Search, 'sample' for Sampling Decoder.")
+            raise ValueError("Invalid generation_method. Use 'C-beam' for Classic Beam Search, 'BF-beam' for Best-First Beam Search, 'sample' for Sampling Decoder.")
 
         # Untokenize generated sequences
         results = []
@@ -172,9 +172,6 @@ def beam_search_decode(
 ):
     """
     Performs beam search decoding with a fixed prefix and handles invalid sequences.
-    
-    (Functionality remains unchanged.)
-    
     Returns:
         list of tuples: Generated sequences and their probabilities.
     """
@@ -554,9 +551,9 @@ def generation_with_variants(
     beam_width,
     temperature,
     variant_count=10,
-    generation_method='BS',  # Updated from decoder_type
+    generation_method='C-beam',
     use_masking=True,
-    prefix_length=0,  # Specify the starting position for modifications
+    prefix_length=0, 
     filter_invalid=False
 ):
     """
@@ -572,7 +569,7 @@ def generation_with_variants(
         beam_width (int): Beam width for the beam search.
         temperature (float): Temperature for sampling diversity.
         variant_count (int): Number of variants to generate for the source SMILES.
-        generation_method (str): Generation method ('BS', 'BFBS', 'SD').
+        generation_method (str): Generation method ('C-beam', 'BF-beam', 'sample').
         use_masking (bool): Whether to apply masking during decoding.
         prefix_length (int): Number of tokens from the source to use as a prefix after <sos>.
 
@@ -597,9 +594,9 @@ def generation_with_variants(
             max_len=max_len,
             beam_width=beam_width,
             temperature=temperature,
-            generation_method=generation_method,  # Updated
+            generation_method=generation_method,
             use_masking=use_masking,
-            prefix_length=prefix_length,  # Pass the prefix length to the decoding function
+            prefix_length=prefix_length, 
             filter_invalid=filter_invalid
         )
 
@@ -621,7 +618,7 @@ def recursive_generation_with_beam(
     beam_width,
     steps,
     temperature=1.0,
-    generation_method='BS',  # Updated from decoder_type
+    generation_method='C-beam', 
     use_masking=False,
     prefix_length=0,
     filter_invalid=False
@@ -640,7 +637,7 @@ def recursive_generation_with_beam(
         steps (int): Number of recursive steps for generation.
         tokenizer: The tokenizer object with an untokenize method.
         temperature (float): Temperature for sampling diversity.
-        generation_method (str): Generation method ('BS', 'BFBS', 'SD').
+        generation_method (str): Generation method ('C-beam', 'BF-beam', 'sample').
         use_masking (bool): Whether to apply masking during decoding.
         prefix_length (int): Number of tokens from the source to use as a prefix after <sos>.
 
@@ -666,7 +663,7 @@ def recursive_generation_with_beam(
                 beam_width=beam_width,
                 temperature=temperature,
                 tokenizer=tokenizer,
-                generation_method=generation_method,  # Updated
+                generation_method=generation_method, 
                 use_masking=use_masking,
                 prefix_length=prefix_length,
                 filter_invalid=filter_invalid
@@ -727,7 +724,6 @@ def compute_nll(input_smiles, target_smiles, src_field, trg_field, model, device
     trg_indexes = [trg_field.vocab.stoi[token] for token in target_tokens]
     trg_tensor = torch.LongTensor(trg_indexes).unsqueeze(0).to(device)
 
-    # For teacher forcing:
     # trg_input: the decoder input (all tokens except the last)
     # trg_expected: the expected output tokens (all tokens except the first)
     trg_input = trg_tensor[:, :-1]
