@@ -3,11 +3,11 @@ from setuptools import setup, find_packages
 setup(
     name="annalog",
     version="0.5",
-    packages=find_packages(),  # Automatically find packages
+    packages=find_packages(), 
     install_requires=[
         "partialsmiles @ git+https://github.com/baoilleach/partialsmiles.git"
     ],
-    description="ANNalog -- a seq2seq model which could generate similar molecules",
+    description="ANNalog -- a seq2seq model which could generate medchem similar molecules",
     author="Wei Dai",
     author_email="bty415@qmul.ac.uk",
     license="MIT",
