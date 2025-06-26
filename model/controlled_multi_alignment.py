@@ -4,7 +4,7 @@ import collections
 import itertools
 from concurrent.futures import ProcessPoolExecutor
 from rdkit import Chem
-from model import vocabulary  # Assuming this imports the SMILESTokenizer
+from model import vocabulary
 
 # Path for input and output
 input_files = [
