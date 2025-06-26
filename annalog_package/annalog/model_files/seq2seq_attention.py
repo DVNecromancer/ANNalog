@@ -1,3 +1,4 @@
+## code is taken from Ben Trevett's Seq2Seq tutorial: https://github.com/bentrevett/pytorch-seq2seq
 from . import vocabulary
 import torch
 import torch.nn as nn
