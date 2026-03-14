@@ -24,7 +24,7 @@ setup(
     },
     install_requires=[
         "partialsmiles>=2.0",
-        "chembl-gen-check==0.1.2",
+        "chembl-gen-check==0.1.3",
     ],
     python_requires=">=3.10",
     entry_points={
