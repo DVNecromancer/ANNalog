@@ -16,7 +16,8 @@ A tested dependency set is provided in **`seq2seq_environment.yml`** in this rep
 
 Notes:
 - The PyPI package **does not pin or install PyTorch** for you. Please install a PyTorch build that matches your system (CPU/CUDA).
-- If you use the provided conda YAML, you’ll get a known-good environment for generation.
+- The provided conda YAML is the recommended environment for ANNalog generation and includes the required `chembl-gen-check` dependency.
+- `chembl-gen-check` requires Python `>=3.10`; the provided environment targets Python 3.12.
 
 ---
 
@@ -67,7 +68,21 @@ You have **two ways** to generate:
 Both share the same core options:
 - decoding methods: `beam`, `BF-beam`, `sampling`
 - exploration modes: `normal`, `variants`, `recursive`
+- optional post-generation annotation with `--cgc`
 - TSV/CSV output
+
+---
+
+### Decoding methods (what they mean)
+
+#### `-m beam`
+Classical beam search. Keeps the top-k partial sequences at each decoding step.
+
+#### `-m BF-beam`
+Best-first beam search. Expands the current best partial sequence while keeping unexplored partial sequences in memory. This is usually slower and more memory-hungry than classical beam search.
+
+#### `-m sampling`
+Samples each next token from the model probability distribution.
 
 ---
 
@@ -83,6 +98,30 @@ Generate directly from the input SMILES.
 #### `-e recursive`
 Run generation in multiple rounds. In round 1 you generate from the input SMILES.  
 In round 2, you generate again using **the round-1 outputs as new inputs**, and so on for `--loops` rounds.
+
+---
+
+### Main generation options
+
+- `--temperature`: sampling temperature. Higher values increase diversity; lower values make sampling more conservative. Used only with `-m sampling`.
+- `--seed`: random seed for reproducible sampling. Used only with `-m sampling`.
+- `--prefix`: fixed starting prefix for generation. This can be either:
+  - an integer number of starting characters taken from the beginning of the input SMILES, or
+  - a literal starting string that must match the beginning of the input SMILES.
+- `--keep-invalid`: keep invalid generated SMILES instead of filtering them out.
+- `--max-length`: maximum generated sequence length.
+- `--variant-number`: number of variants to create in `-e variants` mode.
+- `--loops`: number of recursive rounds in `-e recursive` mode.
+- `--cgc`: run `chembl-gen-check` on each generated SMILES **after generation** and append five extra output columns:
+  - `cgc_scaffold`
+  - `cgc_skeleton`
+  - `cgc_ring_systems`
+  - `cgc_structural_alerts`
+  - `cgc_lacan`
+
+`chembl-gen-check` is a lightweight structural sanity-check package for rapid verification of scaffold, generic scaffold (here reported as `skeleton`), and ring-system precedent in ChEMBL, and it can also report structural alerts and LACAN-related uncommon-bond information.
+
+**Reference:** [chembl-gen-check (PyPI)](https://pypi.org/project/chembl-gen-check/)
 
 ---
 
@@ -111,6 +150,11 @@ annalog-generate -i "CCO" -n 20 -e variants --variant-number 10 -o gen_variants.
 **Recursive exploration (2 loops):**
 ```bash
 annalog-generate -i "CCO" -n 10 -e recursive --loops 2 -o gen_recursive.tsv
+```
+
+**Generation with chembl-gen-check annotation:**
+```bash
+annalog-generate -i "CCO" -n 50 -m beam --cgc -o gen_with_cgc.tsv
 ```
 
 You can also invoke the same CLI via Python module form:
@@ -158,3 +202,11 @@ The output file includes a header row with columns:
 - `rank` (1-based)
 - `generated_smiles`
 - `score`
+
+When `--cgc` is enabled, five additional columns are appended:
+
+- `cgc_scaffold`
+- `cgc_skeleton`
+- `cgc_ring_systems`
+- `cgc_structural_alerts`
+- `cgc_lacan`
