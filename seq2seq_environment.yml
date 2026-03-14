@@ -14,4 +14,4 @@ dependencies:
   - scikit-learn=1.8.0
   - pip
   - pip:
-      - chembl-gen-check==0.1.2
+      - chembl-gen-check==0.1.3
