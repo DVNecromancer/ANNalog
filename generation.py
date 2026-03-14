@@ -12,6 +12,7 @@ Input (choose exactly one):
 Output:
   Default TSV to stdout
   Optional CSV via -f/--format csv
+  Optional chembl-gen-check columns via --cgc
 
 Key CLI shorthands:
   -i  input (SMILES string or .smi file path)
@@ -44,6 +45,15 @@ import torch
 
 from annalog.model_handler import SMILESModelHandler
 from annalog.SMILES_generator import SMILESGenerator
+
+
+CGC_HEADER = [
+    "cgc_scaffold",
+    "cgc_skeleton",
+    "cgc_ring_systems",
+    "cgc_structural_alerts",
+    "cgc_lacan",
+]
 
 
 def _normalize_method(user_method: str) -> str:
@@ -153,6 +163,43 @@ def _read_inputs_cli(
     return inputs
 
 
+def _run_cgc(checker, smiles: str) -> List[object]:
+    """Run chembl-gen-check on one SMILES and return output-column values."""
+    try:
+        checker.load_smiles(smiles)
+        return [
+            checker.check_scaffold(),
+            checker.check_skeleton(),
+            checker.check_ring_systems(),
+            checker.check_structural_alerts(),
+            checker.check_lacan(),
+        ]
+    except Exception as e:
+        print(
+            f"[WARN] chembl-gen-check failed for generated SMILES {smiles!r}: {e}",
+            file=sys.stderr,
+        )
+        return ["", "", "", "", ""]
+
+
+def _write_generated_rows(
+    writer: csv.writer,
+    root_input: str,
+    start_rank: int,
+    generated,
+    cgc_checker=None,
+) -> int:
+    """Write generated rows and return the next rank."""
+    out_rank = start_rank
+    for gen_smi, score in generated:
+        row = [root_input, out_rank, gen_smi, score]
+        if cgc_checker is not None:
+            row.extend(_run_cgc(cgc_checker, gen_smi))
+        writer.writerow(row)
+        out_rank += 1
+    return out_rank
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     # ---- Defaults based on script location ----
     script_dir = Path(__file__).resolve().parent
@@ -258,6 +305,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         default=102,
         help="Max sequence length. Default: 102",
     )
+    parser.add_argument(
+        "--cgc",
+        action="store_true",
+        help=(
+            "Run chembl-gen-check on each generated SMILES and append output columns "
+            "for scaffold, skeleton, ring systems, structural alerts, and LACAN. "
+            "Default: off"
+        ),
+    )
 
     # Exploration options
     parser.add_argument(
@@ -348,13 +404,26 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     generator = SMILESGenerator(handler)
 
+    cgc_checker = None
+    if args.cgc:
+        try:
+            from chembl_gen_check import Checker
+        except ImportError as e:
+            raise ImportError(
+                "`--cgc` requires the optional package `chembl-gen-check`. "
+                "Install it with: pip install chembl-gen-check"
+            ) from e
+        cgc_checker = Checker("chembl")
+
     out_fh = sys.stdout if args.out == "-" else open(args.out, "w", encoding="utf-8", newline="")
     try:
         delimiter = "\t" if args.format == "tsv" else ","
         writer = csv.writer(out_fh, delimiter=delimiter)
 
-        # Keep the same output columns for all modes
-        writer.writerow(["input_smiles", "rank", "generated_smiles", "score"])
+        header = ["input_smiles", "rank", "generated_smiles", "score"]
+        if args.cgc:
+            header.extend(CGC_HEADER)
+        writer.writerow(header)
 
         for in_smi in inputs:
             exploration = args.exploration_method
@@ -373,9 +442,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                     filter_invalid=(not args.keep_invalid),
                     seed=args.seed,
                 )
-                for gen_smi, score in generated:
-                    writer.writerow([in_smi, out_rank, gen_smi, score])
-                    out_rank += 1
+                out_rank = _write_generated_rows(
+                    writer=writer,
+                    root_input=in_smi,
+                    start_rank=out_rank,
+                    generated=generated,
+                    cgc_checker=cgc_checker,
+                )
 
             elif exploration == "variants":
                 # Generate variants of the root input, then generate from each variant
@@ -406,9 +479,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                         )
                         continue
 
-                    for gen_smi, score in generated:
-                        writer.writerow([in_smi, out_rank, gen_smi, score])
-                        out_rank += 1
+                    out_rank = _write_generated_rows(
+                        writer=writer,
+                        root_input=in_smi,
+                        start_rank=out_rank,
+                        generated=generated,
+                        cgc_checker=cgc_checker,
+                    )
 
             elif exploration == "recursive":
                 # Repeatedly generate from the previous round’s outputs
@@ -435,10 +512,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                             )
                             continue
 
-                        for gen_smi, score in generated:
-                            writer.writerow([in_smi, out_rank, gen_smi, score])
-                            out_rank += 1
-                            next_smiles.append(gen_smi)
+                        out_rank = _write_generated_rows(
+                            writer=writer,
+                            root_input=in_smi,
+                            start_rank=out_rank,
+                            generated=generated,
+                            cgc_checker=cgc_checker,
+                        )
+                        next_smiles.extend(gen_smi for gen_smi, _score in generated)
 
                     current_smiles = next_smiles
 
