@@ -334,7 +334,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--loops",
         type=int,
-        default=1,
+        default=2,
         help="Number of recursive loops (used only when --exploration-method recursive). Default: 1",
     )
 
