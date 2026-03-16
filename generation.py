@@ -7,12 +7,12 @@ Defaults (no args needed for ckpt/vocab):
 
 Input (choose exactly one):
   -i/--input "CC(Cl)Br"        (single SMILES)  OR
-  -i/--input inputs.smi         (file; one SMILES per line)
+  -i/--input inputs.smi        (file; one SMILES per line)
 
 Output:
   Default TSV to stdout
   Optional CSV via -f/--format csv
-  Optional chembl-gen-check columns via --cgc
+  chembl-gen-check columns included by default (disable with --no-check)
 
 Key CLI shorthands:
   -i  input (SMILES string or .smi file path)
@@ -32,7 +32,7 @@ Exploration modes:
     Generate --variant-number variants of the input SMILES, then generate from each variant.
 
   recursive:
-    Run --loops rounds. Each round generates from the previous round’s outputs.
+    Run --loops rounds. Each round generates from the previous round's outputs.
 """
 
 import argparse
@@ -47,12 +47,12 @@ from annalog.model_handler import SMILESModelHandler
 from annalog.SMILES_generator import SMILESGenerator
 
 
-CGC_HEADER = [
-    "cgc_scaffold",
-    "cgc_skeleton",
-    "cgc_ring_systems",
-    "cgc_structural_alerts",
-    "cgc_lacan",
+CHECK_HEADER = [
+    "check_scaffold",
+    "check_skeleton",
+    "check_ring_systems",
+    "check_structural_alerts",
+    "check_lacan",
 ]
 
 
@@ -81,8 +81,8 @@ def _normalize_method(user_method: str) -> str:
 def _parse_prefix(prefix: str) -> Union[int, str]:
     """Prefix is optional.
 
-    - digits -> int
-    - otherwise -> string prefix (must match input SMILES start)
+    - digits -> int number of starting characters
+    - otherwise -> literal starting string (must match current input SMILES start)
     """
     if prefix is None:
         return 0
@@ -112,7 +112,6 @@ def _read_inputs_cli(
         but the file does NOT exist, we raise FileNotFoundError.
         (We do NOT use '/' or '\\' heuristics because SMILES can contain them.)
     """
-    # Prefer unified -i/--input if present
     if input_any is not None:
         s = input_any.strip()
         if not s:
@@ -130,14 +129,11 @@ def _read_inputs_cli(
                 raise ValueError(f"No SMILES found in file: {p}")
             return inputs
 
-        # If it looks like a file path by extension but doesn't exist, fail loudly.
         if p.suffix.lower() in {".smi", ".smiles", ".txt"}:
             raise FileNotFoundError(f"Input file not found: {s}")
 
-        # Otherwise treat as SMILES.
         return [s]
 
-    # Legacy flags
     if input_smiles:
         s = input_smiles.strip()
         if not s:
@@ -163,7 +159,7 @@ def _read_inputs_cli(
     return inputs
 
 
-def _run_cgc(checker, smiles: str) -> List[object]:
+def _run_check(checker, smiles: str) -> List[object]:
     """Run chembl-gen-check on one SMILES and return output-column values."""
     try:
         checker.load_smiles(smiles)
@@ -187,14 +183,14 @@ def _write_generated_rows(
     root_input: str,
     start_rank: int,
     generated,
-    cgc_checker=None,
+    check_runner=None,
 ) -> int:
     """Write generated rows and return the next rank."""
     out_rank = start_rank
     for gen_smi, score in generated:
         row = [root_input, out_rank, gen_smi, score]
-        if cgc_checker is not None:
-            row.extend(_run_cgc(cgc_checker, gen_smi))
+        if check_runner is not None:
+            row.extend(_run_check(check_runner, gen_smi))
         writer.writerow(row)
         out_rank += 1
     return out_rank
@@ -211,6 +207,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         description="Generate SMILES with ANNalog (CLI). Outputs TSV by default.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
+    parser.set_defaults(check=True)
 
     # Inputs (choose one)
     inp = parser.add_mutually_exclusive_group(required=True)
@@ -221,7 +218,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         type=str,
         help="Input SMILES OR path to a .smi file (one SMILES per line).",
     )
-    # Legacy flags (optional; keep for backwards compatibility)
     inp.add_argument(
         "--input-smiles",
         dest="input_smiles",
@@ -290,9 +286,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--prefix",
         type=str,
         default="0",
-        help="Optional prefix: integer (chars) or string. Default: 0 (no prefix)",
+        help="Fixed starting prefix: integer number of starting characters from the current input SMILES, or a literal starting string that matches the current input SMILES start. Default: 0",
     )
-    # Default invalid filtering ON. -k flips to keep invalid (disable filtering).
     parser.add_argument(
         "-k",
         "--keep-invalid",
@@ -306,13 +301,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Max sequence length. Default: 102",
     )
     parser.add_argument(
-        "--cgc",
+        "--check",
+        dest="check",
         action="store_true",
         help=(
             "Run chembl-gen-check on each generated SMILES and append output columns "
             "for scaffold, skeleton, ring systems, structural alerts, and LACAN. "
-            "Default: off"
+            "Default: on"
         ),
+    )
+    parser.add_argument(
+        "--no-check",
+        dest="check",
+        action="store_false",
+        help="Disable chembl-gen-check output columns.",
     )
 
     # Exploration options
@@ -324,7 +326,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         default="normal",
         help="Exploration method: normal, variants, recursive. Default: normal",
     )
-    # Long-only options (no short flags), as requested
     parser.add_argument(
         "--variant-number",
         type=int,
@@ -334,7 +335,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--loops",
         type=int,
-        default=2,
+        default=1,
         help="Number of recursive loops (used only when --exploration-method recursive). Default: 1",
     )
 
@@ -364,21 +365,17 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     args = parser.parse_args(argv)
 
-    # Validate exploration-specific args
     if args.variant_number < 1:
         raise ValueError("--variant-number must be >= 1")
     if args.loops < 1:
         raise ValueError("--loops must be >= 1")
 
-    # If user changed resources-dir, and did NOT override checkpoint/vocab,
-    # automatically point them to the filenames inside the new resources dir.
     res_dir = Path(args.resources_dir).expanduser().resolve()
     if Path(args.checkpoint).expanduser().resolve() == default_checkpoint.resolve():
         args.checkpoint = str(res_dir / "Lev_extended.pt")
     if Path(args.vocab).expanduser().resolve() == default_vocab.resolve():
         args.vocab = str(res_dir / "stereo_experiment_vocab_ttf.pkl")
 
-    # Validate existence
     ckpt_path = Path(args.checkpoint).expanduser()
     vocab_path = Path(args.vocab).expanduser()
     if not ckpt_path.exists():
@@ -404,32 +401,30 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     generator = SMILESGenerator(handler)
 
-    cgc_checker = None
-    if args.cgc:
+    check_runner = None
+    if args.check:
         try:
             from chembl_gen_check import Checker
         except ImportError as e:
             raise ImportError(
-                "`--cgc` requires the optional package `chembl-gen-check`. "
-                "Install it with: pip install chembl-gen-check"
+                "`--check` requires the installed package `chembl-gen-check`."
             ) from e
-        cgc_checker = Checker("chembl")
+        check_runner = Checker("chembl")
 
-    out_fh = sys.stdout if args.out == "-" else open(args.out, "w", encoding="utf-8", newline="")
+    out_fh = sys.stdout if args.out == "-" else open(
+        args.out, "w", encoding="utf-8", newline=""
+    )
     try:
         delimiter = "\t" if args.format == "tsv" else ","
         writer = csv.writer(out_fh, delimiter=delimiter)
 
         header = ["input_smiles", "rank", "generated_smiles", "score"]
-        if args.cgc:
-            header.extend(CGC_HEADER)
+        if args.check:
+            header.extend(CHECK_HEADER)
         writer.writerow(header)
 
         for in_smi in inputs:
             exploration = args.exploration_method
-
-            # Rank is a single running counter per *root input*,
-            # regardless of variants/recursive branching.
             out_rank = 1
 
             if exploration == "normal":
@@ -447,11 +442,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     root_input=in_smi,
                     start_rank=out_rank,
                     generated=generated,
-                    cgc_checker=cgc_checker,
+                    check_runner=check_runner,
                 )
 
             elif exploration == "variants":
-                # Generate variants of the root input, then generate from each variant
                 try:
                     variants = generator.generate_variants(in_smi, args.variant_number)
                 except Exception as e:
@@ -484,11 +478,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                         root_input=in_smi,
                         start_rank=out_rank,
                         generated=generated,
-                        cgc_checker=cgc_checker,
+                        check_runner=check_runner,
                     )
 
             elif exploration == "recursive":
-                # Repeatedly generate from the previous round’s outputs
                 current_smiles: List[str] = [in_smi]
 
                 for loop_idx in range(args.loops):
@@ -496,14 +489,16 @@ def main(argv: Optional[List[str]] = None) -> int:
 
                     for parent in current_smiles:
                         try:
-                            generated = generator.generate_smiles(
-                                input_smiles=parent,
-                                generation_number=args.generation_number,
-                                generation_method=method,
-                                temperature=args.temperature,
-                                prefix=prefix,
-                                filter_invalid=(not args.keep_invalid),
-                                seed=args.seed,
+                            generated = list(
+                                generator.generate_smiles(
+                                    input_smiles=parent,
+                                    generation_number=args.generation_number,
+                                    generation_method=method,
+                                    temperature=args.temperature,
+                                    prefix=prefix,
+                                    filter_invalid=(not args.keep_invalid),
+                                    seed=args.seed,
+                                )
                             )
                         except Exception as e:
                             print(
@@ -517,7 +512,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                             root_input=in_smi,
                             start_rank=out_rank,
                             generated=generated,
-                            cgc_checker=cgc_checker,
+                            check_runner=check_runner,
                         )
                         next_smiles.extend(gen_smi for gen_smi, _score in generated)
 
