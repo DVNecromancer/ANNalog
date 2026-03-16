@@ -68,7 +68,7 @@ You have **two ways** to generate:
 Both share the same core options:
 - decoding methods: `beam`, `BF-beam`, `sampling`
 - exploration modes: `normal`, `variants`, `recursive`
-- optional post-generation annotation with `--cgc`
+- post-generation structural checking with `--check` / `--no-check` (**on by default**)
 - TSV/CSV output
 
 ---
@@ -106,18 +106,13 @@ In round 2, you generate again using **the round-1 outputs as new inputs**, and 
 - `--temperature`: sampling temperature. Higher values increase diversity; lower values make sampling more conservative. Used only with `-m sampling`.
 - `--seed`: random seed for reproducible sampling. Used only with `-m sampling`.
 - `--prefix`: fixed starting prefix for generation. This can be either:
-  - an integer number of starting characters taken from the beginning of the input SMILES, or
-  - a literal starting string that must match the beginning of the input SMILES.
+  - an integer number of starting characters taken from the beginning of the current input SMILES, or
+  - a literal starting string that must match the beginning of the current input SMILES.
 - `--keep-invalid`: keep invalid generated SMILES instead of filtering them out.
 - `--max-length`: maximum generated sequence length.
 - `--variant-number`: number of variants to create in `-e variants` mode.
 - `--loops`: number of recursive rounds in `-e recursive` mode.
-- `--cgc`: run `chembl-gen-check` on each generated SMILES **after generation** and append five extra output columns:
-  - `cgc_scaffold`
-  - `cgc_skeleton`
-  - `cgc_ring_systems`
-  - `cgc_structural_alerts`
-  - `cgc_lacan`
+- `--check` / `--no-check`: enable or disable `chembl-gen-check` annotation of generated SMILES. Checking is **on by default**.
 
 `chembl-gen-check` is a lightweight structural sanity-check package for rapid verification of scaffold, generic scaffold (here reported as `skeleton`), and ring-system precedent in ChEMBL, and it can also report structural alerts and LACAN-related uncommon-bond information.
 
@@ -132,7 +127,7 @@ Help:
 annalog-generate -h
 ```
 
-**Quick start (single SMILES, beam, 50 outputs):**
+**Quick start (single SMILES, beam, 50 outputs; checks on by default):**
 ```bash
 annalog-generate -i "CCO" -n 50 -m beam -o gen.tsv
 ```
@@ -152,9 +147,9 @@ annalog-generate -i "CCO" -n 20 -e variants --variant-number 10 -o gen_variants.
 annalog-generate -i "CCO" -n 10 -e recursive --loops 2 -o gen_recursive.tsv
 ```
 
-**Generation with chembl-gen-check annotation:**
+**Disable structural checking:**
 ```bash
-annalog-generate -i "CCO" -n 50 -m beam --cgc -o gen_with_cgc.tsv
+annalog-generate -i "CCO" -n 50 -m beam --no-check -o gen_no_check.tsv
 ```
 
 You can also invoke the same CLI via Python module form:
@@ -192,21 +187,34 @@ python generation.py \
   -o gen.tsv
 ```
 
+**Disable structural checking:**
+```bash
+python generation.py \
+  -i "CCO" \
+  -n 50 \
+  -m beam \
+  --no-check \
+  --resources-dir annalog/ckpt_and_vocab \
+  -o gen_no_check.tsv
+```
+
 ---
 
 ## Output format
 
-The output file includes a header row with columns:
+The output file always includes these base columns:
 
 - `input_smiles`
 - `rank` (1-based)
 - `generated_smiles`
 - `score`
 
-When `--cgc` is enabled, five additional columns are appended:
+By default, structural checking is **enabled**, so five additional columns are also appended:
 
-- `cgc_scaffold`
-- `cgc_skeleton`
-- `cgc_ring_systems`
-- `cgc_structural_alerts`
-- `cgc_lacan`
+- `check_scaffold`
+- `check_skeleton`
+- `check_ring_systems`
+- `check_structural_alerts`
+- `check_lacan`
+
+If you use `--no-check`, the output contains only the four base columns.
