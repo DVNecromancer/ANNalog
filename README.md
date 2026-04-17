@@ -33,7 +33,7 @@ https://colab.research.google.com/drive/1aJhaBOG7xuYFwMGzfUmbMsLe8T462Ptc#scroll
 ### Option A — Install from PyPI (recommended for “just use it”)
 
 ```bash
-pip install annalog
+pip install numpy==2.4.2 pandas==3.0.1 tqdm==4.67.3 torch==2.10.0 torchvision==0.25.0 rdkit==2025.09.6 scikit-learn==1.8.0 annalog
 ```
 
 After installation, you can use the installed CLI:
