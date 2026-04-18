@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""generation.py — ANNalog command-line SMILES generation (inference)
+"""generation.py - ANNalog command-line SMILES generation (inference)
 
 Defaults (no args needed for ckpt/vocab):
   <this_script_dir>/ckpt_and_vocab/Lev_extended.pt
@@ -8,6 +8,12 @@ Defaults (no args needed for ckpt/vocab):
 Input (choose exactly one):
   -i/--input "CC(Cl)Br"        (single SMILES)  OR
   -i/--input inputs.smi        (file; one SMILES per line)
+
+Input handling:
+  If prefix control is active, the input SMILES is used exactly as provided.
+  If prefix control is not active, the input SMILES is normalized with:
+    MolToSmiles(MolFromSmiles(smiles), canonical=False)
+  The script prints whether RDKit normalization changed the input SMILES.
 
 Output:
   Default TSV to stdout
@@ -42,6 +48,7 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 import torch
+from rdkit import Chem
 
 from annalog.model_handler import SMILESModelHandler
 from annalog.SMILES_generator import SMILESGenerator
@@ -92,6 +99,11 @@ def _parse_prefix(prefix: str) -> Union[int, str]:
     if p.isdigit():
         return int(p)
     return p
+
+
+def _prefix_is_active(prefix: Union[int, str]) -> bool:
+    """Return True if prefix control is active."""
+    return prefix != 0
 
 
 def _read_inputs_cli(
@@ -157,6 +169,32 @@ def _read_inputs_cli(
     if not inputs:
         raise ValueError(f"No SMILES found in file: {input_file}")
     return inputs
+
+
+def _normalize_input_smiles(smiles: str) -> str:
+    """Apply Noel's RDKit normalization and report whether the input changed."""
+    s = (smiles or "").strip()
+    if not s:
+        raise ValueError("Input SMILES is empty")
+
+    mol = Chem.MolFromSmiles(s)
+    if mol is None:
+        raise ValueError(f"Invalid input SMILES: {s!r}")
+
+    processed = Chem.MolToSmiles(mol, canonical=False)
+
+    if processed == s:
+        print(
+            f"[INFO] input SMILES unchanged after RDKit normalization: {s}",
+            file=sys.stderr,
+        )
+        return s
+
+    print(
+        f"[INFO] input SMILES changed after RDKit normalization: {s} -> {processed}",
+        file=sys.stderr,
+    )
+    return processed
 
 
 def _run_check(checker, smiles: str) -> List[object]:
@@ -423,7 +461,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             header.extend(CHECK_HEADER)
         writer.writerow(header)
 
-        for in_smi in inputs:
+        for raw_in_smi in inputs:
+            if _prefix_is_active(prefix):
+                in_smi = raw_in_smi
+            else:
+                in_smi = _normalize_input_smiles(raw_in_smi)
+
             exploration = args.exploration_method
             out_rank = 1
 
@@ -439,7 +482,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 )
                 out_rank = _write_generated_rows(
                     writer=writer,
-                    root_input=in_smi,
+                    root_input=raw_in_smi,
                     start_rank=out_rank,
                     generated=generated,
                     check_runner=check_runner,
@@ -450,7 +493,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     variants = generator.generate_variants(in_smi, args.variant_number)
                 except Exception as e:
                     print(
-                        f"[WARN] generate_variants failed for input {in_smi!r}: {e}",
+                        f"[WARN] generate_variants failed for input {raw_in_smi!r}: {e}",
                         file=sys.stderr,
                     )
                     variants = []
@@ -468,14 +511,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                         )
                     except Exception as e:
                         print(
-                            f"[WARN] generate_smiles failed for variant {variant!r} (root {in_smi!r}): {e}",
+                            f"[WARN] generate_smiles failed for variant {variant!r} (root {raw_in_smi!r}): {e}",
                             file=sys.stderr,
                         )
                         continue
 
                     out_rank = _write_generated_rows(
                         writer=writer,
-                        root_input=in_smi,
+                        root_input=raw_in_smi,
                         start_rank=out_rank,
                         generated=generated,
                         check_runner=check_runner,
@@ -502,14 +545,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                             )
                         except Exception as e:
                             print(
-                                f"[WARN] generate_smiles failed in loop {loop_idx + 1} for parent {parent!r} (root {in_smi!r}): {e}",
+                                f"[WARN] generate_smiles failed in loop {loop_idx + 1} for parent {parent!r} (root {raw_in_smi!r}): {e}",
                                 file=sys.stderr,
                             )
                             continue
 
                         out_rank = _write_generated_rows(
                             writer=writer,
-                            root_input=in_smi,
+                            root_input=raw_in_smi,
                             start_rank=out_rank,
                             generated=generated,
                             check_runner=check_runner,
