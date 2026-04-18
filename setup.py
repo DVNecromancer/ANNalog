@@ -7,7 +7,7 @@ README = README_PATH.read_text(encoding="utf-8") if README_PATH.exists() else ""
 
 setup(
     name="annalog",
-    version="1.0.5",
+    version="1.0.6",
     packages=find_packages(),
     include_package_data=True,
     package_data={"annalog": ["ckpt_and_vocab/*"]},
