@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""annalog/cli.py — ANNalog command-line SMILES generation (inference)
+"""annalog/cli.py - ANNalog command-line SMILES generation (inference)
 
 This is the package-installed CLI version of generation.py.
 
@@ -11,6 +11,12 @@ Defaults (no args needed for ckpt/vocab):
 Input (choose exactly one):
   -i/--input "CC(Cl)Br"        (single SMILES)  OR
   -i/--input inputs.smi        (file; one SMILES per line)
+
+Input handling:
+  User-provided SMILES are first checked against the ANNalog input vocabulary.
+  If the original input is already recognized by ANNalog, it is kept unchanged.
+  If it is not recognized, RDKit processing is attempted and the processed
+  version is used only if ANNalog recognizes that processed form.
 
 Output:
   Default TSV to stdout
@@ -77,6 +83,7 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 import torch
+from rdkit import Chem
 
 from .model_handler import SMILESModelHandler
 from .SMILES_generator import SMILESGenerator
@@ -194,6 +201,84 @@ def _read_inputs_cli(
     return inputs
 
 
+def _smiles_is_annalog_ready(smiles: str, src_field) -> bool:
+    """Return True if every token in the input SMILES is present in ANNalog source vocab."""
+    if src_field is None or src_field.vocab is None:
+        raise RuntimeError("ANNalog source field is not initialized.")
+
+    try:
+        tokens = src_field.preprocess(smiles)
+    except Exception:
+        return False
+
+    return all(tok in src_field.vocab.stoi for tok in tokens)
+
+
+def _looks_kekulized_input(smiles: str, mol: Chem.Mol) -> bool:
+    """Heuristic: aromatic molecule written without aromatic lowercase atom tokens."""
+    has_aromatic_atoms = any(atom.GetIsAromatic() for atom in mol.GetAtoms())
+    has_lowercase_aromatic_tokens = any(ch in {"b", "c", "n", "o", "p", "s"} for ch in smiles)
+    return has_aromatic_atoms and not has_lowercase_aromatic_tokens
+
+
+def _prepare_input_smiles(smiles: str, src_field) -> str:
+    """Validate input, preserve ANNalog-ready strings, otherwise fall back to RDKit-processed SMILES."""
+    s = (smiles or "").strip()
+    if not s:
+        raise ValueError("Input SMILES is empty")
+
+    mol = Chem.MolFromSmiles(s)
+    if mol is None:
+        raise ValueError(f"Invalid input SMILES: {s!r}")
+
+    if _smiles_is_annalog_ready(s, src_field):
+        return s
+
+    processed = Chem.MolToSmiles(
+        mol,
+        canonical=False,
+        isomericSmiles=True,
+        kekuleSmiles=False,
+    )
+
+    if not _smiles_is_annalog_ready(processed, src_field):
+        raise ValueError(
+            f"Input SMILES {s!r} is valid, but neither the original input nor the RDKit processed version "
+            f"{processed!r} is recognized by ANNalog."
+        )
+
+    if _looks_kekulized_input(s, mol):
+        print(
+            f"[INFO] kekulized input SMILES detected, using RDKit processed version : {processed} as input",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"[INFO] input SMILES not recognized by ANNalog, using RDKit processed version : {processed} as input",
+            file=sys.stderr,
+        )
+
+    return processed
+
+
+def _validate_prefix_after_processing(
+    prefix: Union[int, str],
+    raw_input: str,
+    processed_input: str,
+) -> None:
+    """Guard against literal prefixes becoming invalid after RDKit processing."""
+    if raw_input == processed_input:
+        return
+
+    if isinstance(prefix, str):
+        if not processed_input.startswith(prefix):
+            raise ValueError(
+                f"Input SMILES {raw_input!r} was converted to {processed_input!r} before generation, "
+                f"so the literal prefix {prefix!r} no longer matches the processed input. "
+                "Please update the prefix or provide an ANNalog-ready input SMILES."
+            )
+
+
 def _run_check(checker, smiles: str) -> List[object]:
     """Run chembl-gen-check on one SMILES and return output-column values."""
     try:
@@ -232,7 +317,7 @@ def _write_generated_rows(
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    # ---- Packaged defaults (inside installed annalog) ----
+    # Packaged defaults (inside installed annalog)
     default_resources_dir = files("annalog") / "ckpt_and_vocab"
     default_checkpoint_res = default_resources_dir / "Lev_extended.pt"
     default_vocab_res = default_resources_dir / "stereo_experiment_vocab_ttf.pkl"
@@ -461,7 +546,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 header.extend(CHECK_HEADER)
             writer.writerow(header)
 
-            for in_smi in inputs:
+            for raw_in_smi in inputs:
+                in_smi = _prepare_input_smiles(raw_in_smi, handler.SRC)
+                _validate_prefix_after_processing(prefix, raw_in_smi, in_smi)
+
                 exploration = args.exploration_method
                 out_rank = 1
 
@@ -477,7 +565,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     )
                     out_rank = _write_generated_rows(
                         writer=writer,
-                        root_input=in_smi,
+                        root_input=raw_in_smi,
                         start_rank=out_rank,
                         generated=generated,
                         check_runner=check_runner,
@@ -488,7 +576,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         variants = generator.generate_variants(in_smi, args.variant_number)
                     except Exception as e:
                         print(
-                            f"[WARN] generate_variants failed for input {in_smi!r}: {e}",
+                            f"[WARN] generate_variants failed for input {raw_in_smi!r}: {e}",
                             file=sys.stderr,
                         )
                         variants = []
@@ -506,14 +594,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                             )
                         except Exception as e:
                             print(
-                                f"[WARN] generate_smiles failed for variant {variant!r} (root {in_smi!r}): {e}",
+                                f"[WARN] generate_smiles failed for variant {variant!r} (root {raw_in_smi!r}): {e}",
                                 file=sys.stderr,
                             )
                             continue
 
                         out_rank = _write_generated_rows(
                             writer=writer,
-                            root_input=in_smi,
+                            root_input=raw_in_smi,
                             start_rank=out_rank,
                             generated=generated,
                             check_runner=check_runner,
@@ -540,14 +628,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                                 )
                             except Exception as e:
                                 print(
-                                    f"[WARN] generate_smiles failed in loop {loop_idx + 1} for parent {parent!r} (root {in_smi!r}): {e}",
+                                    f"[WARN] generate_smiles failed in loop {loop_idx + 1} for parent {parent!r} (root {raw_in_smi!r}): {e}",
                                     file=sys.stderr,
                                 )
                                 continue
 
                             out_rank = _write_generated_rows(
                                 writer=writer,
-                                root_input=in_smi,
+                                root_input=raw_in_smi,
                                 start_rank=out_rank,
                                 generated=generated,
                                 check_runner=check_runner,
