@@ -3,7 +3,7 @@
 ANNalog is a **SMILES-to-SMILES** generative model for medicinal chemistry analogue design.
 
 - **Paper (ChemRxiv):** https://chemrxiv.org/doi/10.26434/chemrxiv-2025-9c1v6
-- **Paper (Jcheminfo):** [https://chemrxiv.org/doi/10.26434/chemrxiv-2025-9c1v6](https://doi.org/10.1186/s13321-026-01186-6)
+- **Paper (Jcheminfo):** https://doi.org/10.1186/s13321-026-01186-6
 
 ANNalog is a transformer-based sequence-to-sequence (Seq2Seq) model designed to generate medicinal-chemistry-relevant analogues of an input molecule. It supports:
 - **local chemical-space exploration** (small, SAR-like modifications), and
