@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 ANNalog training from scratch using existing parallel .src/.trg files.
 
